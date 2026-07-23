@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /settings/
+Disallow: /account/
+Disallow: /api/
+
+# The production build replaces this file with the VITE_SITE_URL sitemap locations.
+Sitemap: https://example.com/sitemap.xml

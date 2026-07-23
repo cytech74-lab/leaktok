@@ -1,0 +1,26 @@
+# Frontend dependencies and builds
+node_modules/
+dist/
+
+# Environment secrets (keep templates)
+.env
+.env.*
+!.env.example
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors and agent-local state
+.vscode/
+.agents/
+.codex/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Preserve-but-ignore nested repository metadata if consolidated.
+cytechdevhub-main/.git.cytech-backup/

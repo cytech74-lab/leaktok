@@ -1,0 +1,17 @@
+{
+  "name": "LeakTok",
+  "short_name": "LeakTok",
+  "description": "Discover and watch trending videos and viral moments on LeakTok.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050507",
+  "theme_color": "#050507",
+  "icons": [
+    {
+      "src": "/images/leaktok_logo.png",
+      "sizes": "1536x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
