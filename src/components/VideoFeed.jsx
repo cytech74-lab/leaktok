@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { videos as fallbackVideos } from '../data/mockVideos'
 import { useLocalStorage } from '../hooks/useLocalStorage'
-import { getVideos } from '../services/leaktokApi'
+import { getRecommendedFeed } from '../services/leaktokApi'
 import { initializeAnalytics } from '../services/analytics'
 import { getAnalyticsIdentity } from '../services/analytics'
 import { setVideoLike, setVideoSaved } from '../services/leaktokApi'
@@ -9,6 +9,8 @@ import { useToast } from './Toast'
 import VideoCard from './VideoCard'
 import TopNav from './TopNav'
 import BottomNav from './BottomNav'
+import { getRecommendationProfile, recommendationRequest, recordImpression, recordLike, recordSave, recordShare, recordWatch } from '../recommendation/profile'
+import { rankCandidates } from '../recommendation/rank'
 
 export default function VideoFeed() {
   const [videos, setVideos] = useState([])
@@ -22,6 +24,7 @@ export default function VideoFeed() {
   const [saved, setSaved] = useLocalStorage('leaktok-saved', [])
   const feedRef = useRef()
   const controlsRef = useRef()
+  const feedTokenRef = useRef()
   const toast = useToast()
 
   const toggle = (set, values, id) => set(values.includes(id) ? values.filter((item) => item !== id) : [...values, id])
@@ -29,10 +32,14 @@ export default function VideoFeed() {
     if (!replace && (fetching || !hasMore)) return
     setFetching(true)
     try {
-      const result = await getVideos(nextPage, 10)
-      setVideos((items) => replace ? result.videos : [...items, ...result.videos.filter((video) => !items.some((item) => item.id === video.id))])
+      const existingIds = replace ? [] : videos.map((video) => video.id)
+      const request = recommendationRequest(getAnalyticsIdentity().visitor_id, existingIds, 10, feedTokenRef.current)
+      const result = await getRecommendedFeed(request, nextPage)
+      const ranked = result.personalized ? result.videos : rankCandidates(result.videos, getRecommendationProfile(), { limit: result.videos.length })
+      setVideos((items) => replace ? ranked : [...items, ...ranked.filter((video) => !items.some((item) => item.id === video.id))])
+      feedTokenRef.current = result.feedToken
       setPage(nextPage)
-      setHasMore(result.pagination.has_more)
+      setHasMore(result.hasMore)
       setUsingFallback(false)
     } catch {
       if (replace) {
@@ -52,6 +59,10 @@ export default function VideoFeed() {
   useEffect(() => {
     if (!usingFallback && hasMore && videos.length && active >= videos.length - 3) loadPage(page + 1)
   }, [active, videos.length, hasMore, usingFallback, page])
+  useEffect(() => {
+    const video = videos[active]
+    if (video) recordImpression(video)
+  }, [active, videos[active]?.id])
   useEffect(() => {
     if (!feedRef.current || !videos.length) return
     const cards = [...feedRef.current.querySelectorAll('.video-card')]
@@ -88,14 +99,18 @@ export default function VideoFeed() {
             onLike={() => {
               const enabled = !liked.includes(video.id)
               toggle(setLiked, liked, video.id)
+              recordLike(video, enabled)
               setVideoLike(video.id, getAnalyticsIdentity().visitor_id, enabled).catch(() => {})
             }}
             onSave={() => {
               const enabled = !saved.includes(video.id)
               toggle(setSaved, saved, video.id)
+              recordSave(video, enabled)
               setVideoSaved(video.id, getAnalyticsIdentity().visitor_id, enabled).catch(() => {})
               toast(enabled ? 'Video saved' : 'Removed from saved')
             }}
+            onShareRecorded={() => recordShare(video)}
+            onWatch={(stats) => recordWatch(video, stats)}
             showTopNav showBottomNav controlsRef={controlsRef} />
         ))}
         {fetching && videos.length > 0 && <div className="feed-fetching" aria-label="Loading more videos"><span /></div>}

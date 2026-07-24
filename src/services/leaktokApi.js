@@ -1,5 +1,9 @@
+import { normalizeHashtags } from '../recommendation/profile'
+import { meaningfulVideoTitle } from '../utils/title'
+
 const configuredUrl = import.meta.env.VITE_LEAKTOK_API_URL
 const API_URL = (configuredUrl || 'https://www.cytechdevhub.com/api/leaktok').replace(/\/+$/, '')
+let recommendationEndpointAvailable
 
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
@@ -33,8 +37,8 @@ export function normalizeVideo(video) {
     thumbnailUrl: video.thumbnail_url || '/images/leaktok_logo.png',
     caption: video.description || video.title || '',
     description: video.description || '',
-    title: video.title || video.description?.slice(0, 80) || 'LeakTok video',
-    hashtags: Array.isArray(video.hashtags) ? video.hashtags : [],
+    title: meaningfulVideoTitle(video.title, video.description),
+    hashtags: normalizeHashtags(Array.isArray(video.hashtags) ? video.hashtags : String(video.hashtags || '').split(/[,\s]+/)),
     createdAt: publishedAt,
     updatedAt: video.updated_at,
     likes: Number(video.likes || 0),
@@ -56,6 +60,34 @@ export async function getVideos(page = 1, limit = 10, signal) {
   }
 }
 
+export async function getRecommendedFeed(request, page = 1, signal) {
+  if (recommendationEndpointAvailable !== false) {
+    try {
+      const payload = await apiRequest('/feed/recommend', {
+        method: 'POST',
+        body: JSON.stringify(request),
+        signal,
+      })
+      recommendationEndpointAvailable = true
+      return {
+        videos: (payload.videos || payload.data?.videos || []).map(normalizeVideo),
+        feedToken: payload.feed_token || payload.data?.feed_token,
+        hasMore: payload.has_more ?? payload.data?.has_more ?? true,
+        personalized: true,
+      }
+    } catch (error) {
+      if ([404, 405, 501].includes(error.status)) recommendationEndpointAvailable = false
+    }
+  }
+  const fallback = await getVideos(page, Math.max(request.limit * 3, 30), signal)
+  return {
+    videos: fallback.videos,
+    feedToken: undefined,
+    hasMore: fallback.pagination.has_more,
+    personalized: false,
+  }
+}
+
 export async function getVideo(id, signal) {
   const payload = await apiRequest(`/videos/${encodeURIComponent(id)}`, { signal })
   return normalizeVideo(payload.data)
@@ -63,7 +95,8 @@ export async function getVideo(id, signal) {
 
 export async function searchVideos(query, signal) {
   const payload = await apiRequest(`/search?q=${encodeURIComponent(query)}`, { signal })
-  return (payload.data || []).map(normalizeVideo)
+  const videos = payload.videos || payload.data?.videos || payload.data || []
+  return videos.map(normalizeVideo)
 }
 
 export async function postAnalytics(path, body, keepalive = false) {

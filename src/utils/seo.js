@@ -61,8 +61,22 @@ const upsertCanonical = (href) => {
   link.href = href
 }
 
+const upsertJsonLd = (id, data) => {
+  let script = document.head.querySelector(`#${id}`)
+  if (!script) {
+    script = document.createElement('script')
+    script.type = 'application/ld+json'
+    script.id = id
+    document.head.appendChild(script)
+  }
+  script.textContent = JSON.stringify(data)
+  return script
+}
+const removeStructuredData = (...ids) => ids.forEach((id) => document.head.querySelector(`#${id}`)?.remove())
+
 export const applyVideoMetadata = (video) => {
   if (!video) return () => {}
+  removeStructuredData('collection-structured-data')
   const title = `${video.title} | ${siteConfig.name}`
   const description = videoSeoDescription(video)
   const url = videoCanonicalUrl(video)
@@ -80,18 +94,21 @@ export const applyVideoMetadata = (video) => {
   upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description', content: description })
   upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image', content: image })
   upsertCanonical(url)
-  let jsonLd = document.head.querySelector('#video-structured-data')
-  if (!jsonLd) {
-    jsonLd = document.createElement('script')
-    jsonLd.type = 'application/ld+json'
-    jsonLd.id = 'video-structured-data'
-    document.head.appendChild(jsonLd)
-  }
-  jsonLd.textContent = JSON.stringify(videoJsonLd(video))
-  return () => jsonLd?.remove()
+  const jsonLd = upsertJsonLd('video-structured-data', videoJsonLd(video))
+  const breadcrumb = upsertJsonLd('breadcrumb-structured-data', {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: siteConfig.name, item: canonicalUrl('/') },
+      { '@type': 'ListItem', position: 2, name: 'Trending Videos', item: canonicalUrl('/trending') },
+      { '@type': 'ListItem', position: 3, name: video.title, item: url },
+    ],
+  })
+  return () => { jsonLd?.remove(); breadcrumb?.remove() }
 }
 
 export const applyHomeMetadata = () => {
+  removeStructuredData('video-structured-data', 'collection-structured-data', 'breadcrumb-structured-data')
   const image = canonicalUrl(siteConfig.defaultImage)
   document.title = siteConfig.defaultTitle
   upsertMeta('meta[name="description"]', { name: 'description', content: siteConfig.defaultDescription })
@@ -105,4 +122,58 @@ export const applyHomeMetadata = () => {
   upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description', content: siteConfig.defaultDescription })
   upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image', content: image })
   upsertCanonical(canonicalUrl('/'))
+  upsertJsonLd('website-structured-data', {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'WebSite', name: siteConfig.name, url: canonicalUrl('/'), description: siteConfig.defaultDescription },
+      { '@type': 'Organization', name: siteConfig.name, url: canonicalUrl('/'), logo: image },
+    ],
+  })
+}
+
+export const applyCollectionMetadata = ({ title, description, path, videos = [] }) => {
+  removeStructuredData('video-structured-data')
+  const url = canonicalUrl(path)
+  const image = videos[0]?.thumbnailUrl || videos[0]?.poster || canonicalUrl(siteConfig.defaultImage)
+  document.title = title
+  upsertMeta('meta[name="description"]', { name: 'description', content: description })
+  upsertMeta('meta[name="robots"]', { name: 'robots', content: videos.length ? 'index, follow' : 'noindex, follow' })
+  upsertMeta('meta[property="og:title"]', { property: 'og:title', content: title })
+  upsertMeta('meta[property="og:description"]', { property: 'og:description', content: description })
+  upsertMeta('meta[property="og:image"]', { property: 'og:image', content: image })
+  upsertMeta('meta[property="og:url"]', { property: 'og:url', content: url })
+  upsertMeta('meta[property="og:type"]', { property: 'og:type', content: 'website' })
+  upsertMeta('meta[name="twitter:title"]', { name: 'twitter:title', content: title })
+  upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description', content: description })
+  upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image', content: image })
+  upsertCanonical(url)
+  if (!videos.length) removeStructuredData('collection-structured-data')
+  const itemList = videos.length ? upsertJsonLd('collection-structured-data', {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: title.replace(` | ${siteConfig.name}`, ''),
+    itemListElement: videos.slice(0, 24).map((video, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: video.title,
+      url: videoCanonicalUrl(video),
+    })),
+  }) : null
+  const breadcrumb = upsertJsonLd('breadcrumb-structured-data', {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: siteConfig.name, item: canonicalUrl('/') },
+      { '@type': 'ListItem', position: 2, name: title.replace(` | ${siteConfig.name}`, ''), item: url },
+    ],
+  })
+  return () => { itemList?.remove(); breadcrumb?.remove() }
+}
+
+export const applySearchMetadata = () => {
+  removeStructuredData('video-structured-data', 'collection-structured-data', 'breadcrumb-structured-data')
+  document.title = `Search Videos | ${siteConfig.name}`
+  upsertMeta('meta[name="description"]', { name: 'description', content: 'Search public videos on LeakTok.' })
+  upsertMeta('meta[name="robots"]', { name: 'robots', content: 'noindex, follow' })
+  upsertCanonical(canonicalUrl('/search'))
 }
